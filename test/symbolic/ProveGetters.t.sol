@@ -44,6 +44,28 @@ contract ProveGetters is PSMTestBase {
         assert(psmHarness.getSUsdsValue(a, true) <= psmHarness.getSUsdsValue(b, true));
     }
 
+    // ---- rate-direction monotonicity (2-state: read at r1, raise rate to r2, read again) ----
+    // getSUsdsValue is amount*rate/1e27 (round down, or its ceil for round up), so it
+    // is nondecreasing in the conversion rate: mul-mono (amount fixed) + div-mono.
+    function prove_getSUsdsValue_roundDown_rate_monotonic(uint256 a, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(a < 2**80);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 v1 = psmHarness.getSUsdsValue(a, false);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 v2 = psmHarness.getSUsdsValue(a, false);
+        assert(v1 <= v2);
+    }
+    function prove_getSUsdsValue_roundUp_rate_monotonic(uint256 a, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(a < 2**80);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 v1 = psmHarness.getSUsdsValue(a, true);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 v2 = psmHarness.getSUsdsValue(a, true);
+        assert(v1 <= v2);
+    }
+
     // ---- exact values (closed form) ----
     // The exact closed forms (getUsdsValue == x, getUsdcValue == x*1e12,
     // getSUsdsValue == x*rate/1e27) are proved in ProveOriginals.t.sol by

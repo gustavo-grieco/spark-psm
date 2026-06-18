@@ -155,13 +155,95 @@ contract ProveSwapPreviews is PSMTestBase {
             <= psm.previewSwapExactOut(address(susds), address(usdc), a2));
     }
 
-    // EXACT closed forms for the ExactIn legs are proved in ProveOriginals.t.sol by
-    // delegating to the repo's own UNMODIFIED SwapPreviews fuzz tests
-    // (testFuzz_previewSwapExactIn_*) — no hand-rewritten copies here. Four of the
-    // six prove (usdc->usds, susds->usds, usds->susds, usdc->susds); the two legs
-    // converting TO usdc (usds->usdc == x/1e12, susds->usdc == x*rate/1e27/1e12)
-    // stay `unknown` — they need a "fraction-reduce" `(c1*x)/c2 == x/(c2/c1)` when
-    // `c1 | c2` (the mirror of generalized const-cancel), a lemma hevm lacks. The
-    // ExactOut round-up exact forms (ceilDiv) are also out of reach. This file keeps
-    // the monotonicity properties, which have no counterpart among the originals.
+    // EXACT closed forms for ALL 6 ExactIn legs are proved in ProveOriginals.t.sol
+    // by delegating to the repo's own UNMODIFIED SwapPreviews fuzz tests
+    // (testFuzz_previewSwapExactIn_*) — the two to-usdc legs needed the
+    // fraction-reduce lemma (argotorg/hevm#1073). The ExactOut round-up exact forms
+    // (ceilDiv) stay out of reach. This file keeps the amount- and rate-direction
+    // monotonicity, which has no counterpart among the originals.
+
+    // ---- rate-direction monotonicity (2-state: read at r1, raise rate to r2) ----
+    // sUSDS->usds output is amountIn*rate/1e27, so it INCREASES with the rate
+    // (mul-mono + div-mono).
+    function prove_swapExactIn_susdsToUsds_rate_increasing(uint256 x, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(x <= SUSDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 o1 = psm.previewSwapExactIn(address(susds), address(usds), x);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 o2 = psm.previewSwapExactIn(address(susds), address(usds), x);
+        assert(o1 <= o2);
+    }
+    // usds->sUSDS output is amountIn*1e27/rate, so it DECREASES as the rate rises
+    // (rate is the divisor — divisor-anti-monotonicity).
+    function prove_swapExactIn_usdsToSUsds_rate_decreasing(uint256 x, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(x <= USDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 o1 = psm.previewSwapExactIn(address(usds), address(susds), x);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 o2 = psm.previewSwapExactIn(address(usds), address(susds), x);
+        assert(o2 <= o1);
+    }
+    // usdc->sUSDS output is amountIn*1e27/rate*1e12, DECREASES as the rate rises.
+    function prove_swapExactIn_usdcToSUsds_rate_decreasing(uint256 x, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(x <= USDC_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 o1 = psm.previewSwapExactIn(address(usdc), address(susds), x);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 o2 = psm.previewSwapExactIn(address(usdc), address(susds), x);
+        assert(o2 <= o1);
+    }
+    // sUSDS->usdc output is amountIn*rate/1e27/1e12, INCREASES with the rate.
+    function prove_swapExactIn_susdsToUsdc_rate_increasing(uint256 x, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(x <= SUSDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 o1 = psm.previewSwapExactIn(address(susds), address(usdc), x);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 o2 = psm.previewSwapExactIn(address(susds), address(usdc), x);
+        assert(o1 <= o2);
+    }
+    // ExactOut, sUSDS in: required input is amountOut*1e27/rate (ceil), so it
+    // DECREASES as the rate rises (rate is the divisor — divisor-anti-mono).
+    function prove_swapExactOut_susdsToUsds_rate_decreasing(uint256 y, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(y <= USDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 i1 = psm.previewSwapExactOut(address(susds), address(usds), y);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 i2 = psm.previewSwapExactOut(address(susds), address(usds), y);
+        assert(i2 <= i1);
+    }
+    function prove_swapExactOut_susdsToUsdc_rate_decreasing(uint256 y, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(y <= USDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 i1 = psm.previewSwapExactOut(address(susds), address(usdc), y);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 i2 = psm.previewSwapExactOut(address(susds), address(usdc), y);
+        assert(i2 <= i1);
+    }
+    // ExactOut, sUSDS out: required input is amountOut*rate/1e27 (ceil), so it
+    // INCREASES with the rate (mul-mono + ceil). These are the heaviest legs (a
+    // round-up ceilDiv over an abstract amount*rate, read twice).
+    function prove_swapExactOut_usdsToSUsds_rate_increasing(uint256 y, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(y <= USDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 i1 = psm.previewSwapExactOut(address(usds), address(susds), y);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 i2 = psm.previewSwapExactOut(address(usds), address(susds), y);
+        assert(i1 <= i2);
+    }
+    function prove_swapExactOut_usdcToSUsds_rate_increasing(uint256 y, uint256 r1, uint256 r2) public {
+        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
+        require(y <= USDS_TOKEN_MAX);
+        mockRateProvider.__setConversionRate(r1);
+        uint256 i1 = psm.previewSwapExactOut(address(usdc), address(susds), y);
+        mockRateProvider.__setConversionRate(r2);
+        uint256 i2 = psm.previewSwapExactOut(address(usdc), address(susds), y);
+        assert(i1 <= i2);
+    }
 }

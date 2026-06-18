@@ -6,8 +6,17 @@ import { PSMPreviewDeposit_SuccessTests } from "test/unit/PreviewDeposit.t.sol";
 import {
     PSMPreviewSwapExactIn_UsdsAssetInTests,
     PSMPreviewSwapExactIn_USDCAssetInTests,
-    PSMPreviewSwapExactIn_SUsdsAssetInTests
+    PSMPreviewSwapExactIn_SUsdsAssetInTests,
+    PSMPreviewSwapExactOut_UsdsAssetInTests
 } from "test/unit/SwapPreviews.t.sol";
+import {
+    PSMConvertToAssetsTests,
+    PSMConvertToAssetValueTests,
+    PSMConvertToSharesTests,
+    PSMConvertToSharesWithUsdsTests,
+    PSMConvertToSharesWithUsdcTests,
+    PSMConvertToSharesWithSUsdsTests
+} from "test/unit/Conversions.t.sol";
 
 // Prove the UNMODIFIED stateless fuzz tests symbolically.
 //
@@ -111,3 +120,72 @@ contract ProveSwapInSusdsOriginal is PSMPreviewSwapExactIn_SUsdsAssetInTests {
 // 302s timeout even though the arithmetic is just a linear sum of three
 // lemma-discharged terms. Its tractable home is ProveRealPSM3 (single-slot mock
 // balances), as prove_totalAssets_exact.
+
+// --- no-value / first-branch exact closed forms (totalShares == 0, so the
+// conversions return the asset value with no share division), delegated from
+// Conversions.t.sol. Stateless: the base contracts' setUp does no deposits, and
+// each prove_ delegates to the repo's own UNMODIFIED testFuzz_*.
+
+contract ProveConvertToAssetsOriginal is PSMConvertToAssetsTests {
+    function prove_convertToAssets_usdc(uint256 amount) public view {   // (usds,x) == x
+        require(amount <= USDS_TOKEN_MAX);
+        testFuzz_convertToAssets_usdc(amount);
+    }
+    function prove_convertToAssets_usds(uint256 amount) public view {   // (usdc,x) == x/1e12, fraction-reduce
+        require(amount <= USDC_TOKEN_MAX);
+        testFuzz_convertToAssets_usds(amount);
+    }
+    function prove_convertToAssets_susds(uint256 rate, uint256 amount) public {  // (susds,x) == x*1e27/rate
+        require(rate >= 0.0001e27 && rate <= 1000e27);
+        require(amount <= SUSDS_TOKEN_MAX);
+        testFuzz_convertToAssets_susds(rate, amount);
+    }
+}
+
+contract ProveConvertToAssetValueOriginal is PSMConvertToAssetValueTests {
+    function prove_convertToAssetValue_noValue(uint256 amount) public view {  // == x (identity)
+        testFuzz_convertToAssetValue_noValue(amount);
+    }
+}
+
+contract ProveConvertToSharesOriginal is PSMConvertToSharesTests {
+    function prove_convertToShares_noValue(uint256 amount) public view {  // == x (identity)
+        testFuzz_convertToShares_noValue(amount);
+    }
+}
+
+contract ProveConvertToSharesUsdsOriginal is PSMConvertToSharesWithUsdsTests {
+    function prove_convertToShares_usds_noValue(uint256 amount) public view {  // (usds,x) == x
+        require(amount <= USDS_TOKEN_MAX);
+        testFuzz_convertToShares_noValue(amount);
+    }
+}
+
+contract ProveConvertToSharesUsdcOriginal is PSMConvertToSharesWithUsdcTests {
+    function prove_convertToShares_usdc_noValue(uint256 amount) public view {  // (usdc,x) == x*1e12, gen const-cancel
+        require(amount <= USDC_TOKEN_MAX);
+        testFuzz_convertToShares_noValue(amount);
+    }
+}
+
+contract ProveConvertToSharesSusdsOriginal is PSMConvertToSharesWithSUsdsTests {
+    function prove_convertToShares_susds_noValue(uint256 amount, uint256 rate) public {  // (susds,x) == x*rate/1e27
+        require(amount >= 1000 && amount <= SUSDS_TOKEN_MAX);
+        require(rate >= 0.01e27 && rate <= 1000e27);
+        testFuzz_convertToShares_noValue(amount, rate);
+    }
+}
+
+// previewSwapExactOut rounds the input UP via Math.ceilDiv ((a-1)/b + 1). The
+// ceilDiv-cancel lemma (argotorg/hevm#1073) discharges the one leg whose ceilDiv is
+// over an exactly-divisible product — usds->usdc: ceilDiv(amountOut*1e18, 1e6) ==
+// amountOut*1e12 (1e6 | 1e18, so ceil == floor) — delegated below. The other
+// ExactOut legs assert a round-up *tolerance* (assertLe(amountIn - expected, tol))
+// over a non-divisible / rate-based ceilDiv; those need a ceilDiv *bound* lemma we
+// don't have yet, so they stay monotonicity-only (ProveSwapPreviews).
+contract ProveSwapOutUsdsOriginal is PSMPreviewSwapExactOut_UsdsAssetInTests {
+    function prove_previewSwapExactOut_usdsToUsdc(uint256 amountOut) public view {  // == amountOut*1e12
+        require(amountOut <= USDC_TOKEN_MAX);
+        testFuzz_previewSwapExactOut_usdsToUsdc(amountOut);
+    }
+}
