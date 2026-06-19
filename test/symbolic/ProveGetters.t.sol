@@ -22,21 +22,14 @@ contract ProveGetters is PSMTestBase {
         );
     }
 
-    // ---- monotonicity ----
-    function prove_getUsdsValue_monotonic(uint256 a, uint256 b) public view {
-        require(a <= b && b < 2**128);
-        assert(psmHarness.getUsdsValue(a) <= psmHarness.getUsdsValue(b));
-    }
-    function prove_getUsdcValue_monotonic(uint256 a, uint256 b) public view {
-        require(a <= b && b < 2**128);
-        assert(psmHarness.getUsdcValue(a) <= psmHarness.getUsdcValue(b));
-    }
-    function prove_getSUsdsValue_roundDown_monotonic(uint256 rate, uint256 a, uint256 b) public {
-        require(rate >= 0.01e27 && rate <= 100e27);
-        mockRateProvider.__setConversionRate(rate);
-        require(a <= b && b < 2**80);
-        assert(psmHarness.getSUsdsValue(a, false) <= psmHarness.getSUsdsValue(b, false));
-    }
+    // ---- monotonicity (round-up only) ----
+    // The round-DOWN amount-monotonicity of all three getters (getUsdsValue,
+    // getUsdcValue, getSUsdsValue round down) is subsumed by their exact closed
+    // forms proved in ProveOriginals.t.sol: an exact value trivially implies
+    // monotonicity over the same domain, so those copies were removed. Only the
+    // round-up sUSDS monotonicity is kept — it has no exact-form counterpart among
+    // the originals (the round-up closed form is a ceilDiv, out of reach as an
+    // exact equality).
     function prove_getSUsdsValue_roundUp_monotonic(uint256 rate, uint256 a, uint256 b) public {
         require(rate >= 0.01e27 && rate <= 100e27);
         mockRateProvider.__setConversionRate(rate);
@@ -71,6 +64,7 @@ contract ProveGetters is PSMTestBase {
     // getSUsdsValue == x*rate/1e27) are proved in ProveOriginals.t.sol by
     // delegating to the repo's own UNMODIFIED Getters fuzz tests
     // (testFuzz_getUsdsValue / getUsdcValue / getSUsdsValue_roundDown), so there is
-    // no hand-rewritten copy of those equalities here. This file keeps only the
-    // monotonicity properties, which have no counterpart among the originals.
+    // no hand-rewritten copy of those equalities here. After the cleanup this file
+    // keeps only the round-up sUSDS monotonicity, which has no exact-form
+    // counterpart among the originals.
 }
