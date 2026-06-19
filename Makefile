@@ -72,3 +72,19 @@ fuzz:
 	test -n "$$file" || { echo "error: contract '$(T)' not found in test/unit/"; exit 2; }; \
 	echo "=== fuzzing $(T)  ($$file)  corpus=$(CORPUS_ROOT)/$(T) ==="; \
 	$(ECHIDNA) $$file --contract $(T) --config $(FUZZ_CONFIG) --corpus-dir $(CORPUS_ROOT)/$(T)
+
+# ---------------------------------------------------------------------------
+# Stateful invariant fuzzing — the PSM3 handler suite, mirroring the Foundry
+# invariant tests. PSMInvariantsEchidna wraps each handler action as an external
+# function so echidna drives the handlers through them (no allContracts). Runs
+# the invariant_* properties over multi-tx sequences for 12 hours, own corpus.
+#
+#   make fuzz-invariant
+# ---------------------------------------------------------------------------
+INVARIANT_CONFIG := test/invariant/echidna.yaml
+
+.PHONY: fuzz-invariant
+fuzz-invariant:
+	echo "=== fuzzing invariants (PSMInvariantsEchidna)  corpus=$(CORPUS_ROOT)/PSMInvariantsEchidna ==="; \
+	$(ECHIDNA) test/invariant/InvariantsEchidna.t.sol --contract PSMInvariantsEchidna \
+		--config $(INVARIANT_CONFIG) --corpus-dir $(CORPUS_ROOT)/PSMInvariantsEchidna

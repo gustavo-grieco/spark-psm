@@ -1,0 +1,22 @@
+# Stateful invariant fuzzing of PSM3 with the full handler suite, mirroring the
+# Foundry invariant tests (test/invariant/Invariants.t.sol) as closely as echidna
+# allows.
+#
+# PSMInvariantsEchidna wraps each handler action as an external function
+# (lp_deposit, swapper_swapExactIn, timeRate_*, transfer_transfer, owner_setPocket),
+# so echidna drives the handlers THROUGH those wrappers. We deliberately do NOT use
+# `allContracts` (it misbehaves in foundry mode); the wrappers give echidna the same
+# action surface as the original's targetContract(handler) registrations. The
+# invariant_* functions are the checked properties.
+#
+#   make fuzz-invariant
+testMode: foundry
+seqLen: 100              # multi-transaction stateful sequences
+timeout: 43200           # 12-hour campaign
+testMaxGas: 1000000000   # gas-heavy handler sequences must not fail with OOG
+workers: 4
+# slither stays on and allContracts stays off (both defaults). Handlers are reached
+# through the wrapper methods, not allContracts (which misbehaves in foundry mode).
+# invariant_withdrawAllPositions ends with vm.assume(false), so its teardown
+# withdrawals are discarded without being read as a failure.
+# corpusDir is set per-run by the Makefile (--corpus-dir corpus/<Contract>).
