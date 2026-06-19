@@ -49,3 +49,22 @@ verify:
 .PHONY: verify-real
 verify-real:
 	$(ECHIDNA) test/symbolic/ProveRealPSM3.t.sol --contract ProveRealPSM3 --config $(SYMBOLIC_CONFIG) || true
+
+# ---------------------------------------------------------------------------
+# Stateless fuzzing campaigns against the unit (foundry) targets. Config:
+# test/unit/echidna.yaml (foundry mode, seqLen:1 => single transaction, so only
+# the per-call stateless testFuzz_* are exercised — never stateful sequences).
+#
+#   make fuzz T=<UnitContractName>     # e.g. make fuzz T=PSMConvertToSharesTests
+#
+# T must name a contract under test/unit/ (its file is located automatically).
+# ---------------------------------------------------------------------------
+FUZZ_CONFIG := test/unit/echidna.yaml
+
+.PHONY: fuzz
+fuzz:
+	@test -n "$(T)" || { echo "usage: make fuzz T=<UnitContractName>  (a contract in test/unit/)"; exit 2; }
+	@file=$$(grep -rlE "^contract +$(T)[ {]" test/unit/*.t.sol | head -1); \
+	test -n "$$file" || { echo "error: contract '$(T)' not found in test/unit/"; exit 2; }; \
+	echo "=== fuzzing $(T)  ($$file) ==="; \
+	$(ECHIDNA) $$file --contract $(T) --config $(FUZZ_CONFIG)

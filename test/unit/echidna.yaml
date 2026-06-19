@@ -1,0 +1,16 @@
+# Stateless fuzzing of the unit properties with echidna (foundry mode, single
+# transaction per run — seqLen: 1 — so only the per-call stateless testFuzz_*
+# are exercised, never multi-tx/stateful sequences; those live in test/invariant
+# and are out of scope here).
+#
+# Run one unit target:   make fuzz T=<UnitContractName>
+#   e.g.                  make fuzz T=PSMConvertToSharesTests
+#
+# Complements `make verify`: verification proves the stateless conversion math
+# symbolically; this fuzzes the broader unit surface (deposit/withdraw/swap
+# execution, previews, rounding) that the symbolic engine does not fully reach.
+testMode: foundry
+seqLen: 1            # single transaction => stateless only
+testLimit: 50000
+workers: 4
+disableSlither: true # https://github.com/crytic/slither/issues/2770
