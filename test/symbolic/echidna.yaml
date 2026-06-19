@@ -1,13 +1,16 @@
-# Symbolic verification of PSM3's stateless conversion properties with echidna,
-# using the arithmetic-abstraction hevm (argotorg/hevm#1073). The abstraction is
-# forced on inside echidna's verification path, so the mul/div lemmas apply.
+# Symbolic verification of PSM3's stateless proofs with echidna, using the
+# arithmetic-abstraction hevm (argotorg/hevm#1073, abstraction forced on in
+# echidna's verification path).
 #
-# Run (needs the abstraction-enabled echidna on PATH + bitwuzla):
+# Run over every symbolic contract via the Makefile:   make verify
+# Or one contract directly:
 #   echidna test/symbolic/ProveRealPSM3.t.sol --contract ProveRealPSM3 \
 #           --config test/symbolic/echidna.yaml
 #
-# Each prove_ verifies against the REAL deployed PSM3 (single-slot mock balances).
-# Non-target / forge-std helper methods are skipped (shown as vacuously "passing").
+# symExecTargets is the UNION of every prove_* across test/symbolic/*. Matching is
+# per-contract, so each run verifies only the prove_* that exist in that contract;
+# the inherited (unbounded) testFuzz_* are deliberately NOT listed, so they are not
+# verified. No-arg forge-std helpers are skipped automatically.
 testMode: verification
 symExecSMTSolver: bitwuzla
 workers: 0
@@ -19,22 +22,62 @@ symExecMaxExplore: 5000
 symExecMaxIters: 5000
 symExecTimeout: 300
 
-# Proper list of targets: the stateless conversion properties to verify.
 symExecTargets:
-  - prove_convertToShares_totalValue_eq_totalShares
-  - prove_convertToAssetValue_totalShares_eq_totalAssets
-  - prove_totalAssets_rateIncrease_valueChange
-  - prove_totalAssets_exact
+  - prove_assetValue_backing_monotonic
   - prove_assetValue_monotonic
-  - prove_shares_monotonic
-  - prove_shares_no_inflation
+  - prove_convertToAssetValue_noValue
+  - prove_convertToAssetValue_totalShares_eq_totalAssets
+  - prove_convertToAssets_susds
+  - prove_convertToAssets_susds_monotonic
+  - prove_convertToAssets_usdc
+  - prove_convertToAssets_usdc_monotonic
+  - prove_convertToAssets_usds
+  - prove_convertToAssets_usds_eq_value
+  - prove_convertToShares_noValue
+  - prove_convertToShares_susds_noValue
+  - prove_convertToShares_totalValue_eq_totalShares
+  - prove_convertToShares_usdc_noValue
+  - prove_convertToShares_usds_noValue
+  - prove_getAssetValue
+  - prove_getSUsdsValue
+  - prove_getSUsdsValue_roundDown_rate_monotonic
+  - prove_getSUsdsValue_roundUp_monotonic
+  - prove_getSUsdsValue_roundUp_rate_monotonic
+  - prove_getUsdcValue
+  - prove_getUsdsValue
+  - prove_pd_susds_firstdeposit_mono
+  - prove_pd_usdc_firstdeposit_mono
+  - prove_pd_usds_firstdeposit_mono
+  - prove_previewDeposit_susds_firstDeposit
+  - prove_previewDeposit_usdc_firstDeposit
+  - prove_previewDeposit_usds_firstDeposit
+  - prove_previewSwapExactIn_susdsToUsdc
+  - prove_previewSwapExactIn_susdsToUsds
+  - prove_previewSwapExactIn_usdcToSUsds
+  - prove_previewSwapExactIn_usdcToUsds
+  - prove_previewSwapExactIn_usdsToSUsds
+  - prove_previewSwapExactIn_usdsToUsdc
+  - prove_previewSwapExactOut_usdsToUsdc
+  - prove_rounding_susdsValue_tight
   - prove_roundtrip_no_inflation
   - prove_roundtrip_shares
-  - prove_convertToAssets_usdc_monotonic
-  - prove_convertToAssets_susds_monotonic
-  - prove_convertToAssets_usds_eq_value
-  - prove_assetValue_backing_monotonic
+  - prove_roundtrip_usds_susds
   - prove_shares_anti_monotonic_assets
-  - prove_pd_usds_firstdeposit_mono
-  - prove_pd_usdc_firstdeposit_mono
-  - prove_pd_susds_firstdeposit_mono
+  - prove_shares_monotonic
+  - prove_shares_no_inflation
+  - prove_swapExactIn_susdsToUsdc_rate_increasing
+  - prove_swapExactIn_susdsToUsds_rate_increasing
+  - prove_swapExactIn_usdcToSUsds_rate_decreasing
+  - prove_swapExactIn_usdsToSUsds_rate_decreasing
+  - prove_swapExactOut_susdsToUsdc
+  - prove_swapExactOut_susdsToUsdc_rate_decreasing
+  - prove_swapExactOut_susdsToUsds
+  - prove_swapExactOut_susdsToUsds_rate_decreasing
+  - prove_swapExactOut_usdcToSUsds
+  - prove_swapExactOut_usdcToSUsds_rate_increasing
+  - prove_swapExactOut_usdcToUsds
+  - prove_swapExactOut_usdsToSUsds
+  - prove_swapExactOut_usdsToSUsds_rate_increasing
+  - prove_swapExactOut_usdsToUsdc
+  - prove_totalAssets_exact
+  - prove_totalAssets_rateIncrease_valueChange
