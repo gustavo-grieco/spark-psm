@@ -30,6 +30,10 @@ contract PSMInvariantsEchidna is PSMTestBase {
 
     address BURN_ADDRESS = address(0);
 
+    // Ghost for the non-decreasing-share-price invariant (Cantina 2024-09 F2):
+    // the value of 1e18 shares, updated after each invariant check.
+    uint256 public lastSharePrice;
+
     constructor() {
         setUp();
     }
@@ -83,6 +87,8 @@ contract PSMInvariantsEchidna is PSMTestBase {
 
         vm.prank(owner);
         psm.transferOwnership(address(ownerHandler));
+
+        lastSharePrice = psm.convertToAssetValue(1e18);
     }
 
     /**********************************************************************************************/
@@ -405,6 +411,17 @@ contract PSMInvariantsEchidna is PSMTestBase {
 
     function invariant_F() public view {
         _checkInvariant_F();
+    }
+
+    // Cantina 2024-09 F2: the share price (value of 1e18 shares) must not decrease
+    // after any deposit/withdraw/swap beyond a small rounding tolerance. The sUSDS
+    // rate only accrues upward and every operation rounds in the PSM's favor, so LPs
+    // cannot be diluted; the withdraw rounding bug F2 (now fixed) violated this.
+    // Non-view: it ratchets lastSharePrice across calls (echidna persists the write).
+    function invariant_sharePriceNonDecreasing() public {
+        uint256 price = psm.convertToAssetValue(1e18);
+        assertGe(price + 3e12, lastSharePrice);
+        lastSharePrice = price;
     }
 
 }
