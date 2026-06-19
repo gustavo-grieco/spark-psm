@@ -205,6 +205,42 @@ contract ProveRealPSM3 is Test {
         assert(psm.convertToAssets(address(usds), s) == psm.convertToAssetValue(s));
     }
 
+    // EXACT share-supply invariance — the core of the conversionRateIncrease fuzz
+    // tests (Conversions.t.sol): the pool's whole current value always converts back
+    // to exactly the total share supply, at any balances and any rate. convertToShares
+    // computes totalAssets()*totalShares/totalAssets(), which the cancellation lemma
+    // ((a*b)/a == b) collapses to totalShares — so revaluing the pool (a rate change)
+    // moves the dollar value but never dilutes or inflates the share count. EXACT, the
+    // strongest form, not just monotone.
+    function prove_convertToShares_totalValue_eq_totalShares(
+        uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 rate
+    ) public {
+        require(rate >= 0.0001e27 && rate <= 1000e27);
+        mockRateProvider.__setConversionRate(rate);
+        _setState(uc, ud, su, ts);
+        require(psm.totalAssets() != 0 && psm.totalAssets() < 2**128 && ts < 2**128);
+        assert(psm.convertToShares(psm.totalAssets()) == psm.totalShares());
+    }
+
+    // Dual identity, and the core of the convertToAssetValue conversionRate fuzz
+    // tests: all shares always convert back to exactly the pool's whole value, at any
+    // rate. convertToAssetValue computes totalShares*totalAssets()/totalShares, which
+    // the cancellation lemma collapses to totalAssets(). With the identity above this
+    // is the exact aggregate share<->value bijection — the two convert*(expectedShares)
+    // == value assertions in every conversionRate test reduce to these. (The tests'
+    // third line — the value CHANGE equals susds*(rate-1e27)/1e27 — relates two
+    // distinct abstract products and needs a distributivity lemma the abstraction
+    // does not yet have, so it is not covered here.)
+    function prove_convertToAssetValue_totalShares_eq_totalAssets(
+        uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 rate
+    ) public {
+        require(rate >= 0.0001e27 && rate <= 1000e27);
+        mockRateProvider.__setConversionRate(rate);
+        _setState(uc, ud, su, ts);
+        require(psm.totalShares() != 0 && psm.totalAssets() < 2**128 && ts < 2**128);
+        assert(psm.convertToAssetValue(psm.totalShares()) == psm.totalAssets());
+    }
+
     // previewDeposit first-deposit branch: no balances => totalAssets()==0, so
     // convertToShares returns the asset value with no division (previewDeposit ==
     // getAssetValue). Exact closed forms (usds==x, usdc==x*1e12, susds==x*rate/1e27)
