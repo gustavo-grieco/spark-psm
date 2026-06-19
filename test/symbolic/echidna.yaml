@@ -15,7 +15,8 @@ testMode: verification
 symExecSMTSolver: bitwuzla
 workers: 0
 seqLen: 1
-disableSlither: true # https://github.com/crytic/slither/issues/2770
+disableSlither: false      # keep slither on (constant extraction / analysis)
+testMaxGas: 1000000000     # high gas cap so gas-heavy properties don't cut paths to OOG
 
 # Deep enough for the deployment + setUp + conversion path (default 10 is too low).
 symExecMaxExplore: 5000

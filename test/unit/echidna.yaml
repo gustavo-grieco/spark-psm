@@ -13,7 +13,8 @@ testMode: foundry
 seqLen: 1               # single transaction => stateless only
 timeout: 43200          # run each campaign for 12 hours
 testLimit: 1000000000   # effectively unbounded; the 12h timeout is what stops it
+testMaxGas: 1000000000  # high gas cap so gas-heavy properties don't fail with OOG
 workers: 4
-disableSlither: true    # https://github.com/crytic/slither/issues/2770
+disableSlither: false   # keep slither on (constant extraction / analysis)
 # corpusDir is set per-target by the Makefile (--corpus-dir corpus/<Contract>),
 # so each campaign keeps its own corpus; corpus/ is git-ignored.
