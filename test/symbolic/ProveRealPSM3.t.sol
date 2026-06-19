@@ -7,36 +7,30 @@ import { MockRateProvider } from "test/mocks/MockRateProvider.sol";
 
 import { PSM3 } from "src/PSM3.sol";
 
-// Proves PSM3's stateless conversion properties against the REAL deployed
-// contract: `psm` below is an actual `new PSM3(...)`, and every prove_ calls the
-// real psm.* functions, so there is no copy of the conversion math to drift out
-// of sync with src/PSM3.sol.
+// Proves PSM3's stateless conversion properties against the REAL deployed PSM3
+// (psm is an actual new PSM3(...)), so the conversion math can't drift from src.
 //
-// The tokens and rate provider are minimal mocks whose `balanceOf` is a single
-// storage slot (not a mapping). This is a NECESSARY modelling choice, not a
-// shortcut: these properties run through the real totalAssets(), which reads the
-// token balances. A real ERC20's mapping read is a giant keccak-indexed SMT term,
-// and nested inside the abstracted nonlinear arithmetic it blows the query up
-// past the solver's reach (verified: inheriting the real PSMTestBase/MockERC20,
-// convertToAssetValue monotonicity returns `unknown` even at a 700s SMT timeout).
-// The single-slot balance keeps the read a clean symbolic value while leaving
-// PSM3 itself untouched. (The swap previews in ProveSwapPreviews.t.sol read no
-// balances, so they DO reuse the real PSMTestBase/MockERC20.)
+// The tokens use a single-slot balanceOf rather than a per-holder mapping — a
+// modelling necessity, not a shortcut. These properties run through the real
+// totalAssets(), which reads token balances; a mapping read is a keccak-indexed SMT
+// term that, nested inside the abstracted nonlinear arithmetic, puts the query past
+// the solver. A single-slot balance keeps the read a clean symbolic value while
+// leaving PSM3 untouched. (The swap previews read no balances, so they reuse the
+// real MockERC20.)
 //
-// The PSM holds symbolic balances of ALL THREE tokens, so totalAssets() is the
-// real three-term sum (usdc * 1e12 + usds + susds * rate / 1e9 / 1e18);
-// totalShares is written to its storage slot (2).
+// Most properties here are MONOTONICITY / round-trip rather than the exact share
+// formula (which needs the symbolic totalShares/totalAssets division, out of the
+// abstraction's reach). That fallback is useful, not a consolation: monotonicity IS
+// the safety property — a non-monotonic conversion lets a user split or reorder
+// amounts to extract value, and a round-trip returning more than it took is an
+// inflation attack — so proving them rules out those exploit classes directly.
+// Where the exact value is reachable (usds is 1:1) we prove that too.
 //
-//   forge build --ast
 //   hevm test --match "prove_" --abstract-arith --solver bitwuzla
 
-// Drop-in for erc20-helpers MockERC20 with the SAME constructor and the same
-// `mint` / `decimals` surface PSM3 and the fuzz tests use. The ONLY difference is
-// that `balanceOf` is a single storage slot rather than a per-holder mapping:
-// that keeps the balance read (which PSM3.totalAssets() performs) a clean
-// symbolic value instead of a keccak-indexed mapping term, which is what
-// otherwise puts the abstracted nonlinear query past the solver (see header).
-// Single-holder is sound here: every property fixes the balances it depends on.
+// Drop-in MockERC20 with the same surface PSM3 uses, except balanceOf is a single
+// storage slot, not a per-holder mapping (see header). Single-holder is sound here:
+// every property fixes the balances it depends on.
 contract MockToken {
     string public name;
     string public symbol;
@@ -50,9 +44,8 @@ contract MockToken {
     function mint(address, uint256 amount_) external returns (bool) { _bal += amount_; return true; }
     function approve(address, uint256) external pure returns (bool) { return true; }
     function allowance(address, address) external pure returns (uint256) { return type(uint256).max; }
-    // transfer/transferFrom are only exercised by setPocket's zero-amount move in
-    // setUp; the proofs themselves call no transfers (only balanceOf reads), so a
-    // success-returning no-op is sufficient and keeps the single balance slot.
+    // Only setPocket's zero-amount move calls these in setUp; the proofs read only
+    // balanceOf, so a no-op suffices.
     function transfer(address, uint256) external pure returns (bool) { return true; }
     function transferFrom(address, address, uint256) external pure returns (bool) { return true; }
 }
@@ -87,11 +80,10 @@ contract ProveRealPSM3 is Test {
         psm.setPocket(pocket);
     }
 
-    // Hold symbolic balances of all three tokens (=> totalAssets() is the real
-    // sum) and set totalShares. The per-balance bound keeps the precision-scaling
-    // multiplications inside totalAssets() from overflowing (which would just
-    // revert); the conversion no-overflow is then bounded per property by
-    // requiring totalAssets() < 2**128.
+    // Hold symbolic balances of all three tokens (=> totalAssets() is the real sum)
+    // and set totalShares. The per-balance bound keeps the precision multiplies from
+    // overflowing; per property, conversion no-overflow is bounded via
+    // totalAssets() < 2**128.
     function _setState(uint256 uc, uint256 ud, uint256 su, uint256 ts) internal {
         require(uc < 2**120 && ud < 2**120 && su < 2**120);
         usdc.mint(pocket,        uc);   // usdc custodian is the pocket
@@ -100,14 +92,11 @@ contract ProveRealPSM3 is Test {
         vm.store(address(psm), bytes32(TOTAL_SHARES_SLOT), bytes32(ts));
     }
 
-    // EXACT totalAssets() closed form (matches Getters.t.sol testFuzz_totalAssets),
-    // against the real deployed PSM3 with single-slot symbolic balances and a
-    // SYMBOLIC rate:  totalAssets() == usdc*1e12 + usds + susds*rate/1e27.
-    // Each precision term is one lemma — usds: same-constant cancel (x*1e18/1e18);
-    // usdc: generalized const-cancel (x*1e18/1e6, 1e6|1e18); susds:
-    // nested-div-collapse (x*rate/1e9/1e18 == x*rate/1e27) — then summed linearly.
-    // (Delegating to the original is intractable: the real MockERC20 mapping reads
-    // blow the query up to `unknown`; single-slot balances keep it small.)
+    // EXACT totalAssets() closed form (matches Getters.t.sol testFuzz_totalAssets)
+    // against the real PSM3 with symbolic balances and a symbolic rate:
+    // usdc*1e12 + usds + susds*rate/1e27. One lemma per precision term — usds:
+    // same-constant cancel (x*1e18/1e18); usdc: const-cancel (x*1e18/1e6); susds:
+    // nested-div-collapse (x*rate/1e9/1e18 == x*rate/1e27) — summed linearly.
     function prove_totalAssets_exact(uint256 uc, uint256 ud, uint256 su, uint256 rate) public {
         require(rate >= 0.0001e27 && rate <= 1000e27);
         mockRateProvider.__setConversionRate(rate);
@@ -206,20 +195,21 @@ contract ProveRealPSM3 is Test {
         assert(q2 <= q1);
     }
 
-    // EXACT-value lossless usds conversion (enabled by the const-cancellation
-    // lemma): convertToAssets(usds, s) == convertToAssetValue(s). usds is 1:1, so
-    // convertToAssets computes convertToAssetValue(s) * 1e18 / 1e18 — const-cancel
-    // collapses the *1e18/1e18 wrapper, giving an exact equality (no rounding
-    // loss for usds), which monotonicity alone could never establish.
+    // EXACT lossless usds conversion (const-cancel lemma): usds is 1:1, so
+    // convertToAssets computes convertToAssetValue(s)*1e18/1e18; const-cancel
+    // collapses the wrapper to an exact equality — no rounding loss, a guarantee
+    // beyond what monotonicity alone could give.
     function prove_convertToAssets_usds_eq_value(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 s) public {
         _setState(uc, ud, su, ts);
         require(ts != 0 && s < 2**128 && psm.totalAssets() < 2**128);
         assert(psm.convertToAssets(address(usds), s) == psm.convertToAssetValue(s));
     }
 
-    // --- previewDeposit: first-deposit branch (no balances => totalAssets()==0,
-    // so convertToShares returns the asset value directly and there is no
-    // division by totalAssets). previewDeposit == getAssetValue here.
+    // previewDeposit first-deposit branch: no balances => totalAssets()==0, so
+    // convertToShares returns the asset value with no division (previewDeposit ==
+    // getAssetValue). Exact closed forms (usds==x, usdc==x*1e12, susds==x*rate/1e27)
+    // are delegated in ProveOriginals; the monotonicity here — more deposited never
+    // mints fewer shares — has no original to delegate to, so it stays.
     function prove_pd_usds_firstdeposit_mono(uint256 x1, uint256 x2) public view {
         require(x1 <= x2 && x2 < 2**120);
         assert(psm.previewDeposit(address(usds), x1) <= psm.previewDeposit(address(usds), x2));
@@ -232,18 +222,7 @@ contract ProveRealPSM3 is Test {
         require(x1 <= x2 && x2 < 2**60);
         assert(psm.previewDeposit(address(susds), x1) <= psm.previewDeposit(address(susds), x2));
     }
-    // The EXACT-value first-deposit closed forms (previewDeposit(usds) == x,
-    // (usdc) == x*1e12, (susds) == x*rate/1e27) are proved in ProveOriginals.t.sol
-    // by delegating to the repo's own UNMODIFIED PreviewDeposit fuzz tests
-    // (testFuzz_previewDeposit_*_firstDeposit) — no hand-rewritten copy here. The
-    // monotonicity above has no original to delegate to, so it stays.
-    //
-    // NOTE: the GENERAL branch (totalAssets()!=0) of previewDeposit is NOT
-    // provable — even monotonicity returns unknown (302s timeout, verified on the
-    // fresh binary with all lemmas). There convertToShares divides by the symbolic
-    // totalAssets() (av*ts/ta), and the abstraction's pairwise lemmas over that
-    // nested structure explode; the const-cancel/nested-div lemmas only collapse
-    // constant factors, not the symbolic ts/ta division. The first-deposit exacts
-    // above prove precisely because that branch returns the value with no such
-    // division. See CANDIDATES.md "previewDeposit investigation".
+    // The GENERAL branch (totalAssets()!=0) is out of reach even for monotonicity:
+    // there convertToShares divides by the symbolic totalAssets() (av*ts/ta), and the
+    // abstraction's lemmas collapse only constant factors, not that symbolic division.
 }

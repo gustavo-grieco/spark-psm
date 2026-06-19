@@ -18,30 +18,20 @@ import {
     PSMConvertToSharesWithSUsdsTests
 } from "test/unit/Conversions.t.sol";
 
-// Prove the UNMODIFIED stateless fuzz tests symbolically.
+// Prove the repo's UNMODIFIED stateless fuzz tests symbolically.
 //
-// Each `prove_` below inherits the repo's real test contract and DELEGATES to its
-// `testFuzz_*` function — the property logic (and its forge-std `assertEq` exact
-// closed form) is the original, not a copy, so there is nothing to drift. The only
-// thing added is the `require(...)` that supplies the multiplication abstraction's
-// operand bound. That `require` also lands inside forge-std `_bound`'s early-return
-// window (`_bound` returns its argument unchanged when already in [min,max]), so
-// the wrap-around modulo inside the original is on an infeasible branch and never
-// enters the SMT query. (Verified: hevm implements the `assertEq` cheatcode and
-// branches on symbolic operands — a false delegate is caught as a counterexample,
-// not vacuously passed.)
+// Each prove_ inherits the real test contract and delegates to its testFuzz_*, so
+// the property — and its exact closed form, asserted with forge-std assertEq — is
+// the original, not a copy. The only addition is a require() supplying the
+// multiplication abstraction's operand bound; it lands inside forge-std _bound's
+// early-return window, so the wrap-around modulo in the original is unreachable and
+// never enters the query.
 //
-// Bounds mirror each original's `_bound` range so the early-return fires; where the
-// original's range exceeds the abstraction's 2**128 operand budget (the getUsd*
-// fuzz uses 1e45) the proven domain is the 2**128 subset — still far above any real
-// supply. Only the legs the abstraction's cancellation lemmas reach are delegated:
-// the two legs converting TO usdc (`x/1e12`, a fraction-reduce) and every ExactOut
-// round-up leg (a ceilDiv over an abstract product) stay `unknown`, so they are not
-// included here (their monotonicity lives in ProveSwapPreviews.t.sol).
+// Bounds mirror each original's _bound range. Where that range exceeds the
+// abstraction's 2**128 operand budget (the getUsd* fuzz uses 1e45) the proven
+// domain is the 2**128 subset — still far above any real supply.
 //
-//   forge build --ast
-//   hevm test --root . --match "prove_" --abstract-arith --solver bitwuzla \
-//        --max-iterations 50 --smt-timeout 300
+//   hevm test --match "prove_" --abstract-arith --solver bitwuzla
 
 contract ProveGettersOriginal is PSMHarnessTests {
     function prove_getUsdsValue(uint256 x) public view {
@@ -114,17 +104,13 @@ contract ProveSwapInSusdsOriginal is PSMPreviewSwapExactIn_SUsdsAssetInTests {
     }
 }
 
-// NOTE: totalAssets() exact (== usds + usdc*1e12 + susds*rate/1e27, the repo's
-// testFuzz_totalAssets) is NOT delegated here. Delegating runs it through the real
-// MockERC20 (mapping balanceOf for three tokens), which returns `unknown` at a
-// 302s timeout even though the arithmetic is just a linear sum of three
-// lemma-discharged terms. Its tractable home is ProveRealPSM3 (single-slot mock
-// balances), as prove_totalAssets_exact.
+// totalAssets() exact is NOT delegated here: through the real MockERC20 (a mapping
+// balanceOf per token) the query is intractable, even though the arithmetic is a
+// linear sum of three lemma-discharged terms. Its tractable home is ProveRealPSM3
+// (single-slot balances), as prove_totalAssets_exact.
 
-// --- no-value / first-branch exact closed forms (totalShares == 0, so the
-// conversions return the asset value with no share division), delegated from
-// Conversions.t.sol. Stateless: the base contracts' setUp does no deposits, and
-// each prove_ delegates to the repo's own UNMODIFIED testFuzz_*.
+// no-value / first-branch closed forms: totalShares == 0, so the conversions return
+// the asset value with no share division. Delegated from Conversions.t.sol.
 
 contract ProveConvertToAssetsOriginal is PSMConvertToAssetsTests {
     function prove_convertToAssets_usdc(uint256 amount) public view {   // (usds,x) == x
@@ -176,13 +162,11 @@ contract ProveConvertToSharesSusdsOriginal is PSMConvertToSharesWithSUsdsTests {
     }
 }
 
-// previewSwapExactOut rounds the input UP via Math.ceilDiv ((a-1)/b + 1). The
-// ceilDiv-cancel lemma (argotorg/hevm#1073) discharges the one leg whose ceilDiv is
-// over an exactly-divisible product — usds->usdc: ceilDiv(amountOut*1e18, 1e6) ==
-// amountOut*1e12 (1e6 | 1e18, so ceil == floor) — delegated below. The other
-// ExactOut legs assert a round-up *tolerance* (assertLe(amountIn - expected, tol))
-// over a non-divisible / rate-based ceilDiv; those need a ceilDiv *bound* lemma we
-// don't have yet, so they stay monotonicity-only (ProveSwapPreviews).
+// previewSwapExactOut rounds the input UP (Math.ceilDiv). The ceilDiv-cancel lemma
+// discharges the one leg whose product is exactly divisible — usds->usdc:
+// ceilDiv(amountOut*1e18, 1e6) == amountOut*1e12 (1e6 | 1e18, so ceil == floor).
+// The other legs round over a non-divisible / rate-based ceilDiv, out of reach as an
+// exact form; ProveSwapPreviews proves their monotonicity instead.
 contract ProveSwapOutUsdsOriginal is PSMPreviewSwapExactOut_UsdsAssetInTests {
     function prove_previewSwapExactOut_usdsToUsdc(uint256 amountOut) public view {  // == amountOut*1e12
         require(amountOut <= USDC_TOKEN_MAX);

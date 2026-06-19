@@ -3,49 +3,31 @@ pragma solidity ^0.8.13;
 
 import { PSMTestBase } from "test/PSMTestBase.sol";
 
-// Symbolic counterparts of the per-pair swap fuzz tests in
-// test/unit/SwapExactIn.t.sol and test/unit/SwapExactOut.t.sol.
+// Symbolic counterparts of the per-pair swap fuzz tests (SwapExactIn/ExactOut).
+// Inherits PSMTestBase, so the setup is identical to those fuzz tests (same real
+// new PSM3(...), MockERC20 tokens, mockRateProvider, *_TOKEN_MAX bounds), and
+// previewSwap* reads no balances — the quote is a pure function of (amount, rate,
+// precision).
 //
-// This contract inherits PSMTestBase, so the setup is *identical* to those fuzz
-// tests: the same real `new PSM3(...)`, the same MockERC20 tokens, the same
-// `mockRateProvider`, the same `*_TOKEN_MAX` bounds. Each prove_ below names the
-// original `testFuzz_swap*` it mirrors and quotes that test's amount/rate bounds
-// and its closed-form amount, so the correspondence is checkable step by step.
+// The ExactIn legs are covered by exact closed forms in ProveOriginals (an exact
+// value implies amount-monotonicity), so this file keeps only what the originals do
+// NOT cover, each a real guarantee in its own right:
+//   1. Amount-monotonicity of the ExactOut (round-up) quotes. Their closed form is a
+//      ceilDiv over an abstract product, out of reach as an exact equality; but
+//      monotonicity already rules out the exploit — requesting more output can never
+//      cost less input, so no one can underpay by splitting or reordering a swap.
+//   2. Rate-direction monotonicity for every sUSDS leg: the quote moves the correct
+//      way as the rate changes (rate in the numerator => nondecreasing; rate as the
+//      divisor => nonincreasing), so a rate update can't silently invert pricing.
+//   3. The usds<->susds round-trip: swapping out and back never returns more than
+//      you put in (value-conservation), even without the exact per-leg amounts.
 //
-// WHAT IS ASSERTED — the ExactIn legs are fully covered by exact closed forms in
-// ProveOriginals.t.sol (an exact value implies amount-monotonicity over the same
-// domain), so this file keeps only what the originals do NOT cover:
-// 1. Amount-monotonicity of the ExactOut (round-up) quotes, all 6 pairs. The
-//    round-up closed form is a ceilDiv over an abstract product, out of reach as an
-//    exact equality, so monotonicity is the strongest discharged here. Needs the
-//    multiplication abstraction for the nonlinear sUSDS legs.
-// 2. Rate-direction monotonicity (2-state) for every sUSDS leg, both ExactIn and
-//    ExactOut: a quote moves the right way as the conversion rate changes (rate in
-//    the numerator => nondecreasing; rate as the divisor => nonincreasing). This is
-//    a dimension distinct from the originals' amount-monotonicity.
-// 3. The stateless usds<->susds swap round-trip (value-conservation).
-//
-// previewSwap* reads no token balances (only the rate, for sUSDS legs), so no
-// balance/storage modelling is needed — the quote is a pure function of
-// (amount, rate, precision).
-//
-//   forge build --ast
-//   hevm test --match "prove_swap" --abstract-arith --solver bitwuzla --smt-timeout 300
+//   hevm test --match "prove_swap" --abstract-arith --solver bitwuzla
 contract ProveSwapPreviews is PSMTestBase {
 
-    // NOTE: the ExactIn (round-down) amount-monotonicity proofs that used to live
-    // here (all 6 pairs) were removed: ProveOriginals.t.sol proves the *exact*
-    // closed-form amount for every ExactIn leg by delegating to the repo's own
-    // UNMODIFIED testFuzz_previewSwapExactIn_* fuzz tests, and an exact value
-    // implies monotonicity over the same domain. Only the ExactOut legs (no exact
-    // form) and the rate-direction monotonicity survive below.
-
-    // =====================================================================
-    // previewSwapExactOut  (round up)   — mirrors SwapExactOut.t.sol
-    // =====================================================================
-    // amountOut bounded by USDS_TOKEN_MAX (a safe superset of each original's
-    // out-asset bound); the originals additionally assert the round-up amountIn
-    // is within 1 of the exact formula.
+    // ---- previewSwapExactOut (round up): amount-monotonicity ----
+    // amountOut bounded by USDS_TOKEN_MAX (a safe superset of each original's bound).
+    // Each prove_ names the testFuzz_* it mirrors and that test's closed-form amount.
 
     // testFuzz_swapExactOut_usdsToUsdc: amountIn = amountOut * 1e12
     function prove_swapExactOut_usdsToUsdc(uint256 a1, uint256 a2) public view {
@@ -96,14 +78,6 @@ contract ProveSwapPreviews is PSMTestBase {
         assert(psm.previewSwapExactOut(address(susds), address(usdc), a1)
             <= psm.previewSwapExactOut(address(susds), address(usdc), a2));
     }
-
-    // EXACT closed forms for ALL 6 ExactIn legs are proved in ProveOriginals.t.sol
-    // by delegating to the repo's own UNMODIFIED SwapPreviews fuzz tests
-    // (testFuzz_previewSwapExactIn_*) — the two to-usdc legs needed the
-    // fraction-reduce lemma (argotorg/hevm#1073). The ExactOut round-up exact forms
-    // (ceilDiv) stay out of reach, so this file keeps the ExactOut amount-
-    // monotonicity and the rate-direction monotonicity, neither of which has a
-    // counterpart among the originals.
 
     // ---- rate-direction monotonicity (2-state: read at r1, raise rate to r2) ----
     // sUSDS->usds output is amountIn*rate/1e27, so it INCREASES with the rate
@@ -169,8 +143,7 @@ contract ProveSwapPreviews is PSMTestBase {
         assert(i2 <= i1);
     }
     // ExactOut, sUSDS out: required input is amountOut*rate/1e27 (ceil), so it
-    // INCREASES with the rate (mul-mono + ceil). These are the heaviest legs (a
-    // round-up ceilDiv over an abstract amount*rate, read twice).
+    // INCREASES with the rate (mul-mono + ceil).
     function prove_swapExactOut_usdsToSUsds_rate_increasing(uint256 y, uint256 r1, uint256 r2) public {
         require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
         require(y <= USDS_TOKEN_MAX);
@@ -190,18 +163,13 @@ contract ProveSwapPreviews is PSMTestBase {
         assert(i1 <= i2);
     }
 
-    // ---- Tier 3: stateless swap value-conservation (round-trip A->B->A) ----
-    // previewSwapExactIn(B, A, previewSwapExactIn(A, B, x)) <= x: swapping out and
-    // straight back never returns more than you put in — the stateless heart of "a
-    // swap never reduces pool value". Through the real previewSwapExactIn (no
-    // contract change), like the convertToAssetValue round-trips in ProveRealPSM3.
-    // Only the usds<->susds round-trip proves: its cancellation is by the SYMBOLIC
-    // rate (an abstract product), so the div×mul link `(a/rate)*rate <= a` fires.
-    // The constant-leg round-trips (usdc<->usds, usds<->usdc, susds<->usds) cancel
-    // via a native `*1e12`/`*1e27`; the div×mul link is abstract-mul-only, and a
-    // native div×mul-link lemma alone does NOT bridge them (the chain also needs the
-    // intermediate `(x*c)/c` div term synthesized, which hevm does not generate) —
-    // verified `unknown`. They would need a cancellation-synthesis extension.
+    // ---- stateless swap round-trip (value-conservation) ----
+    // Swapping out and straight back never returns more than you put in — the
+    // stateless heart of "a swap never reduces pool value", through the real
+    // previewSwapExactIn. Only the usds<->susds round-trip proves: it cancels by the
+    // SYMBOLIC rate (an abstract product), so the div×mul link (a/rate)*rate <= a
+    // fires. The constant-leg round-trips cancel via a native *1e12 / *1e27, which the
+    // abstract-mul-only div×mul link can't bridge — they stay unknown.
     function prove_roundtrip_usds_susds(uint256 rate, uint256 x) public {
         require(rate >= 0.01e27 && rate <= 100e27);
         mockRateProvider.__setConversionRate(rate);
