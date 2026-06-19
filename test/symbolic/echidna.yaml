@@ -58,6 +58,8 @@ symExecTargets:
   - prove_previewSwapExactIn_usdsToSUsds
   - prove_previewSwapExactIn_usdsToUsdc
   - prove_previewSwapExactOut_usdsToUsdc
+  - prove_previewSwapExactOut_usdsToSUsds
+  - prove_previewSwapExactOut_susdsToUsds
   - prove_rounding_susdsValue_tight
   - prove_roundtrip_no_inflation
   - prove_roundtrip_shares

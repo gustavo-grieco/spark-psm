@@ -7,7 +7,8 @@ import {
     PSMPreviewSwapExactIn_UsdsAssetInTests,
     PSMPreviewSwapExactIn_USDCAssetInTests,
     PSMPreviewSwapExactIn_SUsdsAssetInTests,
-    PSMPreviewSwapExactOut_UsdsAssetInTests
+    PSMPreviewSwapExactOut_UsdsAssetInTests,
+    PSMPreviewSwapExactOut_SUsdsAssetInTests
 } from "test/unit/SwapPreviews.t.sol";
 import {
     PSMConvertToAssetsTests,
@@ -170,14 +171,33 @@ contract ProveConvertToSharesSusdsOriginal is PSMConvertToSharesWithSUsdsTests {
     }
 }
 
-// previewSwapExactOut rounds the input UP (Math.ceilDiv). The ceilDiv-cancel lemma
-// discharges the one leg whose product is exactly divisible — usds->usdc:
-// ceilDiv(amountOut*1e18, 1e6) == amountOut*1e12 (1e6 | 1e18, so ceil == floor).
-// The other legs round over a non-divisible / rate-based ceilDiv, out of reach as an
-// exact form; ProveSwapPreviews proves their monotonicity instead.
+// previewSwapExactOut rounds the input UP (nested Math.ceilDiv). Verified here:
+//  - usds->usdc EXACT: ceilDiv(amountOut*1e18, 1e6) == amountOut*1e12 (1e6 | 1e18,
+//    ceil == floor, via ceilDiv-cancel).
+//  - usds->susds and susds->usds: within-1 round-up TOLERANCE. The susds-precision
+//    divide (/1e18) is exactly divisible, so ceilDiv-cancel collapses it, leaving an
+//    inner ceilDiv over a constant/native-mul divide bounded by division
+//    monotonicity (ceilDiv(D,c) == (D-1)/c + 1 <= floor(D/c) + 1).
+// The three usdc-decimal legs stay out of reach (their monotonicity is in
+// ProveSwapPreviews): usdc->usds and usdc->susds round a /1e12 scale-DOWN (c1 | c2),
+// which would need a ceilDiv variant of fraction-reduce we don't have; susds->usdc
+// times out on its nested ceilDiv even at a 300s SMT timeout.
 contract ProveSwapOutUsdsOriginal is PSMPreviewSwapExactOut_UsdsAssetInTests {
-    function prove_previewSwapExactOut_usdsToUsdc(uint256 amountOut) public view {  // == amountOut*1e12
+    function prove_previewSwapExactOut_usdsToUsdc(uint256 amountOut) public view {  // == amountOut*1e12 (exact)
         require(amountOut <= USDC_TOKEN_MAX);
         testFuzz_previewSwapExactOut_usdsToUsdc(amountOut);
+    }
+    function prove_previewSwapExactOut_usdsToSUsds(uint256 amountOut, uint256 rate) public {  // within 1 of amountOut*rate/1e27
+        require(amountOut >= 1 && amountOut <= USDC_TOKEN_MAX);
+        require(rate >= 0.0001e27 && rate <= 1000e27);
+        testFuzz_previewSwapExactOut_usdsToSUsds(amountOut, rate);
+    }
+}
+
+contract ProveSwapOutSusdsOriginal is PSMPreviewSwapExactOut_SUsdsAssetInTests {
+    function prove_previewSwapExactOut_susdsToUsds(uint256 amountOut, uint256 rate) public {  // within 1 of amountOut*1e27/rate
+        require(amountOut >= 1 && amountOut <= USDS_TOKEN_MAX);
+        require(rate >= 0.0001e27 && rate <= 1000e27);
+        testFuzz_previewSwapExactOut_susdsToUsds(amountOut, rate);
     }
 }

@@ -32,7 +32,8 @@ SYMBOLIC_CONTRACTS := \
 	test/symbolic/ProveOriginals.t.sol:ProveConvertToSharesUsdsOriginal \
 	test/symbolic/ProveOriginals.t.sol:ProveConvertToSharesUsdcOriginal \
 	test/symbolic/ProveOriginals.t.sol:ProveConvertToSharesSusdsOriginal \
-	test/symbolic/ProveOriginals.t.sol:ProveSwapOutUsdsOriginal
+	test/symbolic/ProveOriginals.t.sol:ProveSwapOutUsdsOriginal \
+	test/symbolic/ProveOriginals.t.sol:ProveSwapOutSusdsOriginal
 
 # echidna exits non-zero with workers:0 (only a symbolic worker), so `|| true`
 # keeps the loop going; read the per-method "verified" lines for the result.
