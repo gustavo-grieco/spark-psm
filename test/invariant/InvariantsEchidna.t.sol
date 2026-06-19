@@ -34,6 +34,9 @@ contract PSMInvariantsEchidna is PSMTestBase {
     // the value of 1e18 shares, updated after each invariant check.
     uint256 public lastSharePrice;
 
+    // Ghost for the non-decreasing-rate invariant: the last observed sUSDS rate.
+    uint256 public lastRate;
+
     constructor() {
         setUp();
     }
@@ -89,6 +92,7 @@ contract PSMInvariantsEchidna is PSMTestBase {
         psm.transferOwnership(address(ownerHandler));
 
         lastSharePrice = psm.convertToAssetValue(1e18);
+        lastRate       = rateProvider.getConversionRate();
     }
 
     /**********************************************************************************************/
@@ -422,6 +426,17 @@ contract PSMInvariantsEchidna is PSMTestBase {
         uint256 price = psm.convertToAssetValue(1e18);
         assertGe(price + 3e12, lastSharePrice);
         lastSharePrice = price;
+    }
+
+    // The sUSDS conversion rate (chi) only ever accrues upward. The rest of the suite
+    // — especially invariant_sharePriceNonDecreasing — relies on this; making it an
+    // explicit invariant enforces the assumption and flags any oracle/handler
+    // regression that lets the rate fall (which would otherwise surface as a
+    // confusing share-price drop). Exact (chi never rounds down). Non-view: ratchets.
+    function invariant_rateNonDecreasing() public {
+        uint256 rate = rateProvider.getConversionRate();
+        assertGe(rate, lastRate);
+        lastRate = rate;
     }
 
 }
