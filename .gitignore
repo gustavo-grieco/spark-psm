@@ -2,6 +2,10 @@
 cache/
 out/
 
+# Echidna fuzzing corpora (one dir per `make fuzz` target) + crytic build cache
+corpus/
+crytic-export/
+
 # Ignores broadcast
 /broadcast
 

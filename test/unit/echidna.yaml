@@ -3,14 +3,17 @@
 # are exercised, never multi-tx/stateful sequences; those live in test/invariant
 # and are out of scope here).
 #
-# Run one unit target:   make fuzz T=<UnitContractName>
-#   e.g.                  make fuzz T=PSMConvertToSharesTests
+# Run one unit target (12-hour campaign, own git-ignored corpus dir):
+#   make fuzz T=<UnitContractName>     # e.g. make fuzz T=PSMConvertToSharesTests
 #
 # Complements `make verify`: verification proves the stateless conversion math
 # symbolically; this fuzzes the broader unit surface (deposit/withdraw/swap
 # execution, previews, rounding) that the symbolic engine does not fully reach.
 testMode: foundry
-seqLen: 1            # single transaction => stateless only
-testLimit: 50000
+seqLen: 1               # single transaction => stateless only
+timeout: 43200          # run each campaign for 12 hours
+testLimit: 1000000000   # effectively unbounded; the 12h timeout is what stops it
 workers: 4
-disableSlither: true # https://github.com/crytic/slither/issues/2770
+disableSlither: true    # https://github.com/crytic/slither/issues/2770
+# corpusDir is set per-target by the Makefile (--corpus-dir corpus/<Contract>),
+# so each campaign keeps its own corpus; corpus/ is git-ignored.
