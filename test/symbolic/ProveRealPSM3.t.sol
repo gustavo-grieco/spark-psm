@@ -241,6 +241,26 @@ contract ProveRealPSM3 is Test {
         assert(psm.convertToAssetValue(psm.totalShares()) == psm.totalAssets());
     }
 
+    // Third assertion of the conversionRate fuzz tests: when the rate rises from
+    // 1e27 to q, totalAssets() rises by EXACTLY the sUSDS revaluation,
+    // su*(q-1e27)/1e27 (the usdc/usds legs are rate-independent and cancel). This is
+    // the value-change accounting line, against the real totalAssets() read twice.
+    // Discharged by the scaled-product telescoping lemma (argotorg/hevm#1073):
+    // su*q/1e27 - su*1e27/1e27 == su*(q-1e27)/1e27, relating the two abstract
+    // products su*q and su*(q-1e27).
+    function prove_totalAssets_rateIncrease_valueChange(
+        uint256 uc, uint256 ud, uint256 su, uint256 q
+    ) public {
+        require(q >= 1e27 && q <= 1000e27);
+        _setState(uc, ud, su, 0);
+        mockRateProvider.__setConversionRate(1e27);
+        uint256 v1 = psm.totalAssets();
+        mockRateProvider.__setConversionRate(q);
+        uint256 v2 = psm.totalAssets();
+        require(v2 < 2**128);
+        assert(v2 - v1 == su * (q - 1e27) / 1e27);
+    }
+
     // previewDeposit first-deposit branch: no balances => totalAssets()==0, so
     // convertToShares returns the asset value with no division (previewDeposit ==
     // getAssetValue). Exact closed forms (usds==x, usdc==x*1e12, susds==x*rate/1e27)

@@ -128,6 +128,14 @@ contract ProveConvertToAssetsOriginal is PSMConvertToAssetsTests {
     }
 }
 
+// The conversionRate fuzz tests in Conversions.t.sol are NOT delegated here. They
+// run three real _deposit()s through the inherited MockERC20, so totalAssets()
+// reads a keccak-indexed balance mapping that, nested in the abstracted nonlinear
+// arithmetic, the solver cannot discharge (the same reason ProveRealPSM3 uses a
+// single-slot mock). Their full content is proved tractably in ProveRealPSM3
+// instead: the two convert*(expectedShares)==value assertions as the aggregate
+// identities (convertToShares(totalAssets())==totalShares and its dual), and the
+// value-change line as prove_totalAssets_rateIncrease_valueChange.
 contract ProveConvertToAssetValueOriginal is PSMConvertToAssetValueTests {
     function prove_convertToAssetValue_noValue(uint256 amount) public view {  // == x (identity)
         testFuzz_convertToAssetValue_noValue(amount);
