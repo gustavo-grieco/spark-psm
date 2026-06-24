@@ -52,6 +52,32 @@ verify-real:
 	$(ECHIDNA) test/symbolic/ProveRealPSM3.t.sol --contract ProveRealPSM3 --config $(SYMBOLIC_CONFIG) || true
 
 # ---------------------------------------------------------------------------
+# The same symbolic proofs, run directly with hevm (no echidna) — for the hevm
+# maintainers to reproduce. hevm's `test` runs every `prove_*` across the
+# project's symbolic contracts under the same arithmetic abstraction
+# (argotorg/hevm#1073, forced on with --abstract-arith). Needs `hevm` and
+# bitwuzla on PATH. hevm reads the Foundry AST, so the build must include it;
+# the target runs `forge build --ast` first (run `forge clean` once if you
+# previously built without the AST).
+#
+# Note: hevm filters by *method name* (regex), not by contract, so M selects
+# proofs by name across all symbolic contracts:
+#   make verify-hevm                    # run every prove_* proof
+#   make verify-hevm M=convertToAssets  # only proofs whose name matches M
+#   make verify-hevm M=roundtrip        # the real-PSM3 round-trip proofs
+# ---------------------------------------------------------------------------
+HEVM            ?= hevm
+SYMEXEC_TIMEOUT ?= 300
+SYMEXEC_EXPLORE ?= 5000
+HEVM_FLAGS      := --solver bitwuzla --abstract-arith \
+                   --smt-timeout $(SYMEXEC_TIMEOUT) --max-iterations $(SYMEXEC_EXPLORE)
+
+.PHONY: verify-hevm
+verify-hevm:
+	forge build --ast
+	$(HEVM) test --root . $(if $(M),--match "$(M)") $(HEVM_FLAGS)
+
+# ---------------------------------------------------------------------------
 # Stateless fuzzing campaigns against the unit (foundry) targets. Config:
 # test/unit/echidna.yaml (foundry mode, seqLen:1 => single transaction, so only
 # the per-call stateless testFuzz_* are exercised — never stateful sequences).
