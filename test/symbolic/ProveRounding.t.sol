@@ -29,9 +29,9 @@ contract ProveRounding is PSMTestBase {
     // round-up exceeds round-down by at most 1 wei (rounding is tight / never
     // over-charges by more than a wei), for any conversion rate.
     function prove_rounding_susdsValue_tight(uint256 rate, uint256 amount) public {
-        require(rate >= 0.01e27 && rate <= 100e27);
+        require(rate <= type(uint128).max);
         mockRateProvider.__setConversionRate(rate);
-        require(amount < 2**80);
+        require(amount <= type(uint128).max);
         assert(psmHarness.getSUsdsValue(amount, true) <= psmHarness.getSUsdsValue(amount, false) + 1);
     }
 }

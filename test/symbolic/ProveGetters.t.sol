@@ -26,9 +26,9 @@ contract ProveGetters is PSMTestBase {
     // monotonicity; the round-up form is a ceilDiv, out of reach as an exact
     // equality, so monotonicity is the most we prove for it.
     function prove_getSUsdsValue_roundUp_monotonic(uint256 rate, uint256 a, uint256 b) public {
-        require(rate >= 0.01e27 && rate <= 100e27);
+        require(rate <= type(uint128).max);
         mockRateProvider.__setConversionRate(rate);
-        require(a <= b && b < 2**80);
+        require(a <= b && b <= type(uint128).max);
         assert(psmHarness.getSUsdsValue(a, true) <= psmHarness.getSUsdsValue(b, true));
     }
 
@@ -36,8 +36,8 @@ contract ProveGetters is PSMTestBase {
     // is amount*rate/1e27, so it is nondecreasing in the rate (mul-mono + div-mono) —
     // a higher backing ratio never values a fixed holding lower.
     function prove_getSUsdsValue_roundDown_rate_monotonic(uint256 a, uint256 r1, uint256 r2) public {
-        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
-        require(a < 2**80);
+        require(r1 <= r2 && r2 <= type(uint128).max);
+        require(a <= type(uint128).max);
         mockRateProvider.__setConversionRate(r1);
         uint256 v1 = psmHarness.getSUsdsValue(a, false);
         mockRateProvider.__setConversionRate(r2);
@@ -45,8 +45,8 @@ contract ProveGetters is PSMTestBase {
         assert(v1 <= v2);
     }
     function prove_getSUsdsValue_roundUp_rate_monotonic(uint256 a, uint256 r1, uint256 r2) public {
-        require(r1 <= r2 && r1 >= 0.01e27 && r2 <= 100e27);
-        require(a < 2**80);
+        require(r1 <= r2 && r2 <= type(uint128).max);
+        require(a <= type(uint128).max);
         mockRateProvider.__setConversionRate(r1);
         uint256 v1 = psmHarness.getSUsdsValue(a, true);
         mockRateProvider.__setConversionRate(r2);

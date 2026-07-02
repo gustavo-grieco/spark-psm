@@ -81,11 +81,11 @@ contract ProveRealPSM3 is Test {
     }
 
     // Hold symbolic balances of all three tokens (=> totalAssets() is the real sum)
-    // and set totalShares. The per-balance bound keeps the precision multiplies from
-    // overflowing; per property, conversion no-overflow is bounded via
-    // totalAssets() < 2**128.
+    // and set totalShares. Balances get the uniform uint128 proof budget (two
+    // uint128 operands cannot overflow a 256-bit multiply); per property, conversion
+    // no-overflow is bounded via totalAssets() <= type(uint128).max.
     function _setState(uint256 uc, uint256 ud, uint256 su, uint256 ts) internal {
-        require(uc < 2**120 && ud < 2**120 && su < 2**120);
+        require(uc <= type(uint128).max && ud <= type(uint128).max && su <= type(uint128).max);
         usdc.mint(pocket,        uc);   // usdc custodian is the pocket
         usds.mint(address(psm),  ud);
         susds.mint(address(psm), su);
@@ -98,7 +98,7 @@ contract ProveRealPSM3 is Test {
     // same-constant cancel (x*1e18/1e18); usdc: const-cancel (x*1e18/1e6); susds:
     // nested-div-collapse (x*rate/1e9/1e18 == x*rate/1e27) — summed linearly.
     function prove_totalAssets_exact(uint256 uc, uint256 ud, uint256 su, uint256 rate) public {
-        require(rate >= 0.0001e27 && rate <= 1000e27);
+        require(rate <= type(uint128).max);
         mockRateProvider.__setConversionRate(rate);
         _setState(uc, ud, su, 0);  // totalShares unused by totalAssets()
         uint256 r = mockRateProvider.getConversionRate();
@@ -111,8 +111,8 @@ contract ProveRealPSM3 is Test {
     function prove_assetValue_monotonic(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 s1, uint256 s2) public {
         _setState(uc, ud, su, ts);
         require(ts != 0);
-        require(s1 <= s2 && s1 < 2**128 && s2 < 2**128);
-        require(psm.totalAssets() < 2**128);
+        require(s1 <= s2 && s2 <= type(uint128).max);
+        require(psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToAssetValue(s1) <= psm.convertToAssetValue(s2));
     }
 
@@ -120,7 +120,7 @@ contract ProveRealPSM3 is Test {
     function prove_shares_monotonic(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 a1, uint256 a2) public {
         _setState(uc, ud, su, ts);
         require(psm.totalAssets() != 0);
-        require(a1 <= a2 && a1 < 2**128 && a2 < 2**128 && ts < 2**128);
+        require(a1 <= a2 && a2 <= type(uint128).max && ts <= type(uint128).max);
         assert(psm.convertToShares(a1) <= psm.convertToShares(a2));
     }
 
@@ -129,7 +129,7 @@ contract ProveRealPSM3 is Test {
         _setState(uc, ud, su, ts);
         require(psm.totalAssets() != 0);
         require(ts <= psm.totalAssets());
-        require(v < 2**128 && ts < 2**128 && psm.totalAssets() < 2**128);
+        require(v <= type(uint128).max && psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToShares(v) <= v);
     }
 
@@ -137,7 +137,7 @@ contract ProveRealPSM3 is Test {
     function prove_roundtrip_no_inflation(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 x) public {
         _setState(uc, ud, su, ts);
         require(ts != 0 && psm.totalAssets() != 0);
-        require(x < 2**128 && ts < 2**128 && psm.totalAssets() < 2**128);
+        require(x <= type(uint128).max && ts <= type(uint128).max && psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToAssetValue(psm.convertToShares(x)) <= x);
     }
 
@@ -145,7 +145,7 @@ contract ProveRealPSM3 is Test {
     function prove_roundtrip_shares(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 s) public {
         _setState(uc, ud, su, ts);
         require(ts != 0 && psm.totalAssets() != 0);
-        require(s < 2**128 && ts < 2**128 && psm.totalAssets() < 2**128);
+        require(s <= type(uint128).max && ts <= type(uint128).max && psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToShares(psm.convertToAssetValue(s)) <= s);
     }
 
@@ -153,8 +153,8 @@ contract ProveRealPSM3 is Test {
     function prove_convertToAssets_usdc_monotonic(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 s1, uint256 s2) public {
         _setState(uc, ud, su, ts);
         require(ts != 0);
-        require(s1 <= s2 && s1 < 2**128 && s2 < 2**128);
-        require(psm.totalAssets() < 2**128);
+        require(s1 <= s2 && s2 <= type(uint128).max);
+        require(psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToAssets(address(usdc), s1) <= psm.convertToAssets(address(usdc), s2));
     }
 
@@ -162,8 +162,8 @@ contract ProveRealPSM3 is Test {
     function prove_convertToAssets_susds_monotonic(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 s1, uint256 s2) public {
         _setState(uc, ud, su, ts);
         require(ts != 0);
-        require(s1 <= s2 && s1 < 2**80 && s2 < 2**80);
-        require(psm.totalAssets() < 2**80);
+        require(s1 <= s2 && s2 <= type(uint128).max);
+        require(psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToAssets(address(susds), s1) <= psm.convertToAssets(address(susds), s2));
     }
 
@@ -171,26 +171,26 @@ contract ProveRealPSM3 is Test {
     // move): read, raise the usds balance, read again — both on the real psm,
     // with the other two balances held symbolic.
     function prove_assetValue_backing_monotonic(uint256 uc, uint256 ud1, uint256 ud2, uint256 su, uint256 ts, uint256 s) public {
-        require(ts != 0 && ud1 <= ud2 && s < 2**128);
+        require(ts != 0 && ud1 <= ud2 && s <= type(uint128).max);
         _setState(uc, ud1, su, ts);
-        require(psm.totalAssets() < 2**128);
+        require(psm.totalAssets() <= type(uint128).max);
         uint256 v1 = psm.convertToAssetValue(s);
-        require(ud2 < 2**120);
+        require(ud2 <= type(uint128).max);
         usds.mint(address(psm), ud2 - ud1);  // additive: ud1 -> ud2
-        require(psm.totalAssets() < 2**128);
+        require(psm.totalAssets() <= type(uint128).max);
         uint256 v2 = psm.convertToAssetValue(s);
         assert(v1 <= v2);
     }
 
     // convertToShares anti-monotonic in totalAssets: more backing => fewer shares per value
     function prove_shares_anti_monotonic_assets(uint256 uc, uint256 ud1, uint256 ud2, uint256 su, uint256 ts, uint256 v) public {
-        require(ud1 <= ud2 && ts < 2**128 && v < 2**128);
+        require(ud1 <= ud2 && ts <= type(uint128).max && v <= type(uint128).max);
         _setState(uc, ud1, su, ts);
-        require(psm.totalAssets() != 0 && psm.totalAssets() < 2**128);
+        require(psm.totalAssets() != 0 && psm.totalAssets() <= type(uint128).max);
         uint256 q1 = psm.convertToShares(v);
-        require(ud2 < 2**120);
+        require(ud2 <= type(uint128).max);
         usds.mint(address(psm), ud2 - ud1);  // additive: ud1 -> ud2
-        require(psm.totalAssets() < 2**128);
+        require(psm.totalAssets() <= type(uint128).max);
         uint256 q2 = psm.convertToShares(v);
         assert(q2 <= q1);
     }
@@ -201,7 +201,7 @@ contract ProveRealPSM3 is Test {
     // beyond what monotonicity alone could give.
     function prove_convertToAssets_usds_eq_value(uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 s) public {
         _setState(uc, ud, su, ts);
-        require(ts != 0 && s < 2**128 && psm.totalAssets() < 2**128);
+        require(ts != 0 && s <= type(uint128).max && psm.totalAssets() <= type(uint128).max);
         assert(psm.convertToAssets(address(usds), s) == psm.convertToAssetValue(s));
     }
 
@@ -215,10 +215,10 @@ contract ProveRealPSM3 is Test {
     function prove_convertToShares_totalValue_eq_totalShares(
         uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 rate
     ) public {
-        require(rate >= 0.0001e27 && rate <= 1000e27);
+        require(rate <= type(uint128).max);
         mockRateProvider.__setConversionRate(rate);
         _setState(uc, ud, su, ts);
-        require(psm.totalAssets() != 0 && psm.totalAssets() < 2**128 && ts < 2**128);
+        require(psm.totalAssets() != 0 && psm.totalAssets() <= type(uint128).max && ts <= type(uint128).max);
         assert(psm.convertToShares(psm.totalAssets()) == psm.totalShares());
     }
 
@@ -234,10 +234,10 @@ contract ProveRealPSM3 is Test {
     function prove_convertToAssetValue_totalShares_eq_totalAssets(
         uint256 uc, uint256 ud, uint256 su, uint256 ts, uint256 rate
     ) public {
-        require(rate >= 0.0001e27 && rate <= 1000e27);
+        require(rate <= type(uint128).max);
         mockRateProvider.__setConversionRate(rate);
         _setState(uc, ud, su, ts);
-        require(psm.totalShares() != 0 && psm.totalAssets() < 2**128 && ts < 2**128);
+        require(psm.totalShares() != 0 && psm.totalAssets() <= type(uint128).max && ts <= type(uint128).max);
         assert(psm.convertToAssetValue(psm.totalShares()) == psm.totalAssets());
     }
 
@@ -251,13 +251,13 @@ contract ProveRealPSM3 is Test {
     function prove_totalAssets_rateIncrease_valueChange(
         uint256 uc, uint256 ud, uint256 su, uint256 q
     ) public {
-        require(q >= 1e27 && q <= 1000e27);
+        require(q >= 1e27 && q <= type(uint128).max);   // q >= 1e27: the rate RISES from 1e27 (the property's premise)
         _setState(uc, ud, su, 0);
         mockRateProvider.__setConversionRate(1e27);
         uint256 v1 = psm.totalAssets();
         mockRateProvider.__setConversionRate(q);
         uint256 v2 = psm.totalAssets();
-        require(v2 < 2**128);
+        require(v2 <= type(uint128).max);
         assert(v2 - v1 == su * (q - 1e27) / 1e27);
     }
 
@@ -267,15 +267,15 @@ contract ProveRealPSM3 is Test {
     // are delegated in ProveOriginals; the monotonicity here — more deposited never
     // mints fewer shares — has no original to delegate to, so it stays.
     function prove_pd_usds_firstdeposit_mono(uint256 x1, uint256 x2) public view {
-        require(x1 <= x2 && x2 < 2**120);
+        require(x1 <= x2 && x2 <= type(uint128).max);
         assert(psm.previewDeposit(address(usds), x1) <= psm.previewDeposit(address(usds), x2));
     }
     function prove_pd_usdc_firstdeposit_mono(uint256 x1, uint256 x2) public view {
-        require(x1 <= x2 && x2 < 2**80);
+        require(x1 <= x2 && x2 <= type(uint128).max);
         assert(psm.previewDeposit(address(usdc), x1) <= psm.previewDeposit(address(usdc), x2));
     }
     function prove_pd_susds_firstdeposit_mono(uint256 x1, uint256 x2) public view {
-        require(x1 <= x2 && x2 < 2**60);
+        require(x1 <= x2 && x2 <= type(uint128).max);
         assert(psm.previewDeposit(address(susds), x1) <= psm.previewDeposit(address(susds), x2));
     }
     // The GENERAL branch (totalAssets()!=0) is out of reach even for monotonicity:
